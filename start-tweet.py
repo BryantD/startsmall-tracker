@@ -28,6 +28,7 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import sys
 import argparse
 import requests
 import csv
@@ -49,7 +50,7 @@ def normalize(row):
 	
 	return row
 
-def get_donations():
+def get_donations(sheet_url):
 	r = requests.get(sheet_url)
 	decoded_content = r.content.decode("utf-8")
 	cr = csv.reader(decoded_content.splitlines(), delimiter=",")
@@ -102,6 +103,65 @@ def make_text(row, max_length):
 	
 	return text
 
+def new_donations(args, db, sheet_url):
+	donations = get_donations(sheet_url)
+	if donations:
+		donation_db = Query()
+	
+		for row in donations:
+			row_hash = make_hash(row)
+			if not db.search(donation_db.hash == row_hash):
+				save_donation(db, row, row_hash)
+			
+				text = make_text(row, args.maxlen)
+			
+				if args.print:
+					print(text)
+				if args.toot:
+					mastodon = Mastodon(
+						access_token=mastodon_access_token,
+						api_base_url = 'https://botsin.space')
+					mastodon.toot(text)
+				if args.tweet:
+					auth = tweepy.OAuthHandler(twitter_consumer_key, twitter_consumer_secret)
+					auth.set_access_token(twitter_access_token, twitter_access_token_secret)
+					api = tweepy.API(auth)
+					api.update_status(text)
+	else:
+		print(f"Fetch {sheet_url} failed.", file=sys.stderr)
+		
+def list_donations(db):
+	for row in db:
+		print_row(row)
+
+def print_row(row):
+	print(
+		f"Hash: {row['hash']}\n"
+		f"Date Seen: {row['dateseen']}\n"
+		f"Date: {row['date']}\n"
+		f"Amount: {row['amount']}\n"
+		f"Category: {row['category']}\n"
+		f"Grantee: {row['grantee']}\n"
+		f"Link: {row['link']}\n"
+		f"Why: {row['why']}\n"
+	)
+
+def retrieve_donation(db, hash):
+	donation_db = Query()
+	row = db.search(donation_db.hash == hash)
+	if row:
+		print_row(row[0])
+	else:
+		print(f"Donation {hash} not found.")
+		
+def delete_donation(db, hash):
+	donation_db = Query()
+	ids = db.remove(donation_db.hash == hash)
+	if ids:
+		print(f"Donation {hash} deleted.")
+	else:
+		print(f"Donation {hash} not found.")
+
 def main():
 	parser = argparse.ArgumentParser(description='startsmall charity donation tracker')
 	
@@ -112,37 +172,24 @@ def main():
 	parser.add_argument('--tweet', help='Tweet donations', action='store_true')
 	parser.add_argument('--toot', help='Toot donations', action='store_true')
 	
-	parser.add_argument('--new', default=True, help='Get new donations (default)', action='store_true')
-	parser.add_argument('--list', help='Show all recorded donations', action='store_true')
-	parser.add_argument('--delete', help='Hash of a donation to delete', action='store')
-	parser.add_argument('--retrieve', help='Hash of a donation to retrieve', action='store')
+	parser_group = parser.add_mutually_exclusive_group(required=True)
+	parser_group.add_argument('--new', help='Get & publish new donations', action='store_true')
+	parser_group.add_argument('--list', help='List all recorded donations', action='store_true')
+	parser_group.add_argument('--delete', help='Delete donation', metavar='HASH', action='store')
+	parser_group.add_argument('--retrieve', help='Retrieve & list donation',  metavar='HASH', action='store')
 	
 	args = parser.parse_args()
 	
 	db = TinyDB(args.db)
 	
-	donations = get_donations()
-	donation_db = Query()
+	if args.new:
+		new_donations(args, db, sheet_url)
+	elif args.list:
+		list_donations(db)
+	elif args.delete:
+		delete_donation(db, args.delete)
+	elif args.print:
+		retrieve_donation(db, args.retrieve)
 	
-	for row in donations:
-		row_hash = make_hash(row)
-		if not db.search(donation_db.hash == row_hash):
-			save_donation(db, row, row_hash)
-			
-			text = make_text(row, args.maxlen)
-			
-			if args.print:
-				print(text)
-			if args.toot:
-				mastodon = Mastodon(
-					access_token=mastodon_access_token,
-					api_base_url = 'https://botsin.space')
-				mastodon.toot(text)
-			if args.tweet:
-				auth = tweepy.OAuthHandler(twitter_consumer_key, twitter_consumer_secret)
-				auth.set_access_token(twitter_access_token, twitter_access_token_secret)
-				api = tweepy.API(auth)
-				api.update_status(text)
-
 if __name__ == "__main__":
 	main()
