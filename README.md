@@ -13,4 +13,3 @@ References:
 - https://docs.google.com/spreadsheets/d/1-eGxq2mMoEGwgSpNVL5j2sa6ToojZUZ-Zun8h2oBAR4/ (original URL)
 - https://tinyurl.com/startsmall-tracker (short URL)
 - https://twitter.com/jack/status/1247616214769086465 (original announcement)
-- 
