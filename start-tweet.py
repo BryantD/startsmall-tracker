@@ -75,25 +75,27 @@ def make_hash(row):
 	return m.hexdigest()
 	
 def save_donation(db, row, row_hash, published="none"):
+	db_query = Query()
+	donation = {
+		"hash": row_hash,
+		"date": row[0],
+		"amount": row[1],
+		"category": row[2],
+		"grantee": row[3],
+		"link": row[4],
+		"why": row[5],
+		"date_seen": date.today().strftime("%Y-%m-%d")
+	}
+	
+	if db.search((db_query.hash == row_hash) & db_query.date_seen.exists):
+		del donation["date_seen"]
+
 	if published == "twitter":
-		tweet_status = True
+		donation["tweet_status"] = True
 	elif published == "mastodon":
-		mast_status = True
+		donation["mast_status"] = True
 		
-	db.upsert(
-		{
-			"hash": row_hash,
-			"tweet_status": tweet_status,
-			"mast_status": mast_status,
-			"dateseen": date.today().strftime("%Y-%m-%d"),
-			"date": row[0],
-			"amount": row[1],
-			"category": row[2],
-			"grantee": row[3],
-			"link": row[4],
-			"why": row[5]
-		}
-	)
+	db.upsert(donation, db_query.hash == row_hash)
 
 def make_text(row, max_length):
 	if (row[0] == ""):
@@ -112,13 +114,10 @@ def make_text(row, max_length):
 
 def new_donations(db, sheet_url):
 	donations = get_donations(sheet_url)
-	if donations:
-		donation_db = Query()
-	
+	if donations:	
 		for row in donations:
 			row_hash = make_hash(row)
-			if not db.search(donation_db.hash == row_hash):
-				save_donation(db, row, row_hash)
+			save_donation(db, row, row_hash)
 				
 		return True
 			
