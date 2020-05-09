@@ -74,19 +74,28 @@ def make_hash(row):
 	m.update(str.encode(row[0] + row[1] + row[3]))
 	return m.hexdigest()
 	
-def save_donation(db, row, row_hash):
-	db.insert(
-		{
-			"hash": row_hash,
-			"dateseen": date.today().strftime("%Y-%m-%d"),
-			"date": row[0],
-			"amount": row[1],
-			"category": row[2],
-			"grantee": row[3],
-			"link": row[4],
-			"why": row[5]
-		}
-	)
+def save_donation(db, row, row_hash, published="none"):
+	db_query = Query()
+	donation = {
+		"hash": row_hash,
+		"date": row[0],
+		"amount": row[1],
+		"category": row[2],
+		"grantee": row[3],
+		"link": row[4],
+		"why": row[5],
+		"date_seen": date.today().strftime("%Y-%m-%d")
+	}
+	
+	if db.search((db_query.hash == row_hash) & db_query.date_seen.exists):
+		del donation["date_seen"]
+
+	if published == "twitter":
+		donation["tweet_status"] = True
+	elif published == "mastodon":
+		donation["mast_status"] = True
+		
+	db.upsert(donation, db_query.hash == row_hash)
 
 def make_text(row, max_length):
 	if (row[0] == ""):
@@ -103,33 +112,38 @@ def make_text(row, max_length):
 	
 	return text
 
-def new_donations(args, db, sheet_url):
+def new_donations(db, sheet_url):
 	donations = get_donations(sheet_url)
-	if donations:
-		donation_db = Query()
-	
+	if donations:	
 		for row in donations:
 			row_hash = make_hash(row)
-			if not db.search(donation_db.hash == row_hash):
-				save_donation(db, row, row_hash)
+			save_donation(db, row, row_hash)
+				
+		return True
 			
-				text = make_text(row, args.maxlen)
-			
-				if args.print:
-					print(text)
-				if args.toot:
-					mastodon = Mastodon(
-						access_token=mastodon_access_token,
-						api_base_url = 'https://botsin.space')
-					mastodon.toot(text)
-				if args.tweet:
-					auth = tweepy.OAuthHandler(twitter_consumer_key, twitter_consumer_secret)
-					auth.set_access_token(twitter_access_token, twitter_access_token_secret)
-					api = tweepy.API(auth)
-					api.update_status(text)
 	else:
 		print(f"Fetch {sheet_url} failed.", file=sys.stderr)
+		return False
 		
+def publish_donations(args, db):
+	donation_db = Query()
+	
+	for row in db:
+		text = make_text(row, args.maxlen)
+
+		if args.print:
+			print(text)
+		if args.toot:
+			mastodon = Mastodon(
+				access_token=mastodon_access_token,
+				api_base_url = 'https://botsin.space')
+			mastodon.toot(text)
+		if args.tweet:
+			auth = tweepy.OAuthHandler(twitter_consumer_key, twitter_consumer_secret)
+			auth.set_access_token(twitter_access_token, twitter_access_token_secret)
+			api = tweepy.API(auth)
+			api.update_status(text)
+
 def list_donations(db):
 	for row in db:
 		print_row(row)
@@ -183,7 +197,8 @@ def main():
 	db = TinyDB(args.db)
 	
 	if args.new:
-		new_donations(args, db, sheet_url)
+		new_donations(db, sheet_url)
+		publish_donations(args, db)
 	elif args.list:
 		list_donations(db)
 	elif args.delete:
