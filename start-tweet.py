@@ -110,23 +110,31 @@ def make_text(row, max_length):
 	return text
 		
 def publish_donations(db, args):
-	donation_db = Query()
+	db_query = Query()
 	
-	for donation in db.all():
-		text = make_text(donation, args.maxlen)
-
-		if args.print:
+	if args.print:
+		for donation in db:
+			text = make_text(donation, args.maxlen)
 			print(text)
 			print("\n")
-		if args.toot:
-			if donation["mast_status"] == False:
+	if args.toot:
+		for donation in db.search(db_query.mast_status == False):
+			text = make_text(donation, args.maxlen)
+			if args.test:
+				print(text)
+			else:
 				mastodon = Mastodon(
 					access_token=mastodon_access_token,
 					api_base_url = 'https://botsin.space')
 				mastodon.toot(text)
 				save_donation(db, donation, published="mastodon")
-		if args.tweet:
-			if donation["tweet_status"] == False:
+			sleep(args.sleep * 60)
+	if args.tweet:
+		for donation in db.search(db_query.tweet_status == False):
+			text = make_text(donation, args.maxlen)
+			if args.test:
+				print(text)
+			else:
 				auth = tweepy.OAuthHandler(twitter_consumer_key, twitter_consumer_secret)
 				auth.set_access_token(twitter_access_token, twitter_access_token_secret)
 				api = tweepy.API(auth)
@@ -135,8 +143,7 @@ def publish_donations(db, args):
 					save_donation(db, donation, published="twitter")
 				except tweepy.TweepError as e: 
 					print(f"Tweet failed: {e.response.text}", file=sys.stderr)	
-		
-		sleep(args.sleep * 60)
+			sleep(args.sleep * 60)
 
 def list_donations(db):
 	for row in db:
@@ -177,6 +184,7 @@ def main():
 	
 	parser.add_argument('--maxlen', default=255, type=int, help='Max tweet length')
 	parser.add_argument('--db', required=True, help='Database location')
+	parser.add_argument('--test', help='Test mode', action='store_true')
 	
 	parser.add_argument('--print', help='Print donations', action='store_true')
 	parser.add_argument('--tweet', help='Tweet donations', action='store_true')
