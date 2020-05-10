@@ -37,6 +37,7 @@ import tweepy
 from mastodon import Mastodon
 from tinydb import TinyDB, Query
 from datetime import date
+from time import sleep
 from credentials import *
 from config import *
 
@@ -130,8 +131,13 @@ def publish_donations(db, args):
 				auth = tweepy.OAuthHandler(twitter_consumer_key, twitter_consumer_secret)
 				auth.set_access_token(twitter_access_token, twitter_access_token_secret)
 				api = tweepy.API(auth)
-				api.update_status(text)
-				save_donation(db, donation, published="twitter")
+				try:
+					api.update_status(text)
+					save_donation(db, donation, published="twitter")
+				except tweepy.TweepError as e: 
+					print(f"Tweet failed: {e.response.text}", file=sys.stderr)	
+		
+		sleep(args.sleep * 60)
 
 def list_donations(db):
 	for row in db:
@@ -173,9 +179,11 @@ def main():
 	parser.add_argument('--maxlen', default=255, type=int, help='Max tweet length')
 	parser.add_argument('--db', required=True, help='Database location')
 	
-	parser.add_argument('--print', default=True, help='Print donations', action='store_true')
+	parser.add_argument('--print', help='Print donations', action='store_true')
 	parser.add_argument('--tweet', help='Tweet donations', action='store_true')
 	parser.add_argument('--toot', help='Toot donations', action='store_true')
+	
+	parser.add_argument('--sleep', help='Minutes between publishing donations', default=0, type=int, action='store')
 	
 	parser_group = parser.add_mutually_exclusive_group(required=True)
 	parser_group.add_argument('--download', help='Download new donations', action='store_true')
