@@ -110,7 +110,6 @@ def make_text(row, max_length):
 	return text
 		
 def publish_donations(db, args):
-	print(args)
 	donation_db = Query()
 	
 	for donation in db.all():
