@@ -8,6 +8,11 @@ didn't want to check the Google doc he's using every few days.
 
 I also took the liberty of creating a shortened URL for his sheet.
 
+Residences:
+
+- https://twitter.com/StartsmallTrack
+- @startsmalltracker@botsin.space / https://botsin.space/web/accounts/228508
+
 References:
 
 - https://docs.google.com/spreadsheets/d/1-eGxq2mMoEGwgSpNVL5j2sa6ToojZUZ-Zun8h2oBAR4/ (original URL)
