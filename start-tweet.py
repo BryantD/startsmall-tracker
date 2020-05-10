@@ -40,109 +40,98 @@ from datetime import date
 from credentials import *
 from config import *
 
-def normalize(row):
-	row[0] = row[0].strip()
-	row[1] = row[1].replace(" ", "")
-	row[2] = row[2].strip()
-	row[3] = row[3].strip()
-	row[4] = row[4].strip()
-	row[5] = row[5].strip()
-	
-	return row
-
-def get_donations(sheet_url):
+def download_donations(db, sheet_url):
 	r = requests.get(sheet_url)
-	decoded_content = r.content.decode("utf-8")
-	cr = csv.reader(decoded_content.splitlines(), delimiter=",")
+	if r.ok:
+		decoded_content = r.content.decode("utf-8")
+		cr = csv.reader(decoded_content.splitlines(), delimiter=",")
 
-	distributed_flag = date_flag = False
+		distributed_flag = date_flag = False
 
-	raw_donations = list(cr)
-	trimmed_donations = []
-	for row in raw_donations:
-		if row[0] == "Distributed:":
-			distributed_flag = True
-		elif (row[0] == "Date") and distributed_flag:
-			date_flag = True
-		elif date_flag:
-			trimmed_donations.append(normalize(row))
+		raw_donations = list(cr)
+		trimmed_donations = []
+		for row in raw_donations:
+			# Skip past initial rows
+			if row[0] == "Distributed:":
+				distributed_flag = True
+			elif (row[0] == "Date") and distributed_flag:
+				date_flag = True
+			elif date_flag:
+				
+				donation = {
+					"date": row[0].strip(),
+					"amount": row[1].replace(" ", ""),
+					"category": row[2].strip(),
+					"grantee": row[3].strip(),
+					"link": row[4].strip(),
+					"why": row[5].strip(),
+				}
+
+				save_donation(db, donation)
 			
-	return trimmed_donations
-	
-def make_hash(row):	
-	m = hashlib.md5()
-	m.update(str.encode(row[0] + row[1] + row[3]))
-	return m.hexdigest()
-	
-def save_donation(db, row, row_hash, published="none"):
+		return True
+			
+	else:
+		print(f"Fetch {sheet_url} failed.", file=sys.stderr)
+		return False
+			
+def save_donation(db, donation, published="none"):
 	db_query = Query()
-	donation = {
-		"hash": row_hash,
-		"date": row[0],
-		"amount": row[1],
-		"category": row[2],
-		"grantee": row[3],
-		"link": row[4],
-		"why": row[5],
-		"date_seen": date.today().strftime("%Y-%m-%d")
-	}
-	
-	if db.search((db_query.hash == row_hash) & db_query.date_seen.exists):
-		del donation["date_seen"]
+	m = hashlib.md5()
+
+	m.update(str.encode(donation["date"] + donation["amount"] + donation["grantee"]))
+	donation["hash"] = m.hexdigest()
+		
+	if not db.search((db_query.hash == donation["hash"])):
+		donation["date_seen"] = date.today().strftime("%Y-%m-%d")
+		donation["tweet_status"] = False
+		donation["mast_status"] = False
 
 	if published == "twitter":
 		donation["tweet_status"] = True
 	elif published == "mastodon":
 		donation["mast_status"] = True
 		
-	db.upsert(donation, db_query.hash == row_hash)
+	db.upsert(donation, db_query.hash == donation["hash"])
 
 def make_text(row, max_length):
-	if (row[0] == ""):
-		row[0] = "None"
+	if (row["date"] == ""):
+		row["date"] = "None"
 	
-	text = f"Date: {row[0]}\nAmount: {row[1]}\nCategory: {row[2]}\nGrantee: {row[3]}\nLink: {row[4]}\n\n"
-	text += f"Source: {data_source}"
+	text = f"Date: {row['date']}\nAmount: {row['amount']}\nCategory: {row['category']}\nGrantee: {row['grantee']}\nLink: {row['link']}"
 
 	if len(text) > max_length:
-		text = f"Date: {row[0]}\nAmount: {row[1]}\nGrantee: {row[3]}"
+		text = f"Date: {row['date']}\nAmount: {row['amount']}\nGrantee: {row['grantee']}"
 		
 	if len(text) > max_length:
-		text = f"Amount: {row[1]}\nGrantee: {row[3]}"
+		text = f"Amount: {row['amount']}\nGrantee: {row['grantee']}"
 	
 	return text
-
-def new_donations(db, sheet_url):
-	donations = get_donations(sheet_url)
-	if donations:	
-		for row in donations:
-			row_hash = make_hash(row)
-			save_donation(db, row, row_hash)
-				
-		return True
-			
-	else:
-		print(f"Fetch {sheet_url} failed.", file=sys.stderr)
-		return False
 		
-def publish_donations(args, db):
+def publish_donations(db, args):
+	print(args)
 	donation_db = Query()
 	
-	for row in db:
-		text = make_text(row, args.maxlen)
+	for donation in db.all():
+		text = make_text(donation, args.maxlen)
 
 		if args.print:
 			print(text)
+			print("\n")
 		if args.toot:
-			mastodon = Mastodon(
-				access_token=mastodon_access_token,
-				api_base_url = 'https://botsin.space')
-			mastodon.toot(text)
+			if donation["mast_status"] == False:
+				mastodon = Mastodon(
+					access_token=mastodon_access_token,
+					api_base_url = 'https://botsin.space')
+				mastodon.toot(text)
+				save_donation(db, donation, published="mastodon")
 		if args.tweet:
-			auth = tweepy.OAuthHandler(twitter_consumer_key, twitter_consumer_secret)
-			auth.set_access_token(twitter_access_token, twitter_access_token_secret)
-			api = tweepy.API(auth)
-			api.update_status(text)
+			if donation["tweet_status"] == False:
+				auth = tweepy.OAuthHandler(twitter_consumer_key, twitter_consumer_secret)
+				auth.set_access_token(twitter_access_token, twitter_access_token_secret)
+				api = tweepy.API(auth)
+				api.update_status(text)
+				save_donation(db, donation, published="twitter")
 
 def list_donations(db):
 	for row in db:
@@ -151,13 +140,15 @@ def list_donations(db):
 def print_row(row):
 	print(
 		f"Hash: {row['hash']}\n"
-		f"Date Seen: {row['dateseen']}\n"
+		f"Date Seen: {row['date_seen']}\n"
 		f"Date: {row['date']}\n"
 		f"Amount: {row['amount']}\n"
 		f"Category: {row['category']}\n"
 		f"Grantee: {row['grantee']}\n"
 		f"Link: {row['link']}\n"
 		f"Why: {row['why']}\n"
+		f"Tweet Status: {row['tweet_status']}\n"
+		f"Mastodon Status: {row['mast_status']}\n"
 	)
 
 def retrieve_donation(db, hash):
@@ -187,7 +178,8 @@ def main():
 	parser.add_argument('--toot', help='Toot donations', action='store_true')
 	
 	parser_group = parser.add_mutually_exclusive_group(required=True)
-	parser_group.add_argument('--new', help='Get & publish new donations', action='store_true')
+	parser_group.add_argument('--download', help='Download new donations', action='store_true')
+	parser_group.add_argument('--publish', help='Publish unpublished donations', action='store_true')
 	parser_group.add_argument('--list', help='List all recorded donations', action='store_true')
 	parser_group.add_argument('--delete', help='Delete donation', metavar='HASH', action='store')
 	parser_group.add_argument('--retrieve', help='Retrieve & list donation',  metavar='HASH', action='store')
@@ -196,9 +188,10 @@ def main():
 	
 	db = TinyDB(args.db)
 	
-	if args.new:
-		new_donations(db, sheet_url)
-		publish_donations(args, db)
+	if args.download:
+		download_donations(db, sheet_url)
+	elif args.publish:
+		publish_donations(db, args)
 	elif args.list:
 		list_donations(db)
 	elif args.delete:
