@@ -102,7 +102,7 @@ def make_text(row, max_length):
     if row["date"] == "":
         row["date"] = "None"
 
-    text = f"Date: {row['date']}\nAmount: {row['amount']}\nCategory: {row['category']}\nGrantee: {row['grantee']}\nLink: {row['link']}"
+    text = f"Jack Dorsey donated:\n\nDate: {row['date']}\nAmount: {row['amount']}\nCategory: {row['category']}\nGrantee: {row['grantee']}\nLink: {row['link']}"
 
     if len(text) > max_length:
         text = (
