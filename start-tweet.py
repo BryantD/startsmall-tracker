@@ -65,8 +65,9 @@ def download_donations(db, sheet_url):
                     "amount": row[1].replace(" ", ""),
                     "category": row[2].strip(),
                     "grantee": row[3].strip(),
-                    "link": row[4].strip(),
-                    "why": row[5].strip(),
+                    "twitter": row[4].strip(),
+                    "link": row[5].strip(),
+                    "why": row[6].strip(),
                 }
 
                 save_donation(db, donation)
