@@ -102,8 +102,10 @@ def save_donation(db, donation, published="none"):
 def make_text(row, max_length):
     if row["date"] == "":
         row["date"] = "None"
+    if row["twitter"] == "":
+        row["date"] = "None"
 
-    text = f"Jack Dorsey donated:\n\nDate: {row['date']}\nAmount: {row['amount']}\nCategory: {row['category']}\nGrantee: {row['grantee']}\nLink: {row['link']}"
+    text = f"Jack Dorsey donated:\n\nDate: {row['date']}\nAmount: {row['amount']}\nCategory: {row['category']}\nGrantee: {row['grantee']}\nTwitter: {row['twitter']}\nLink: {row['link']}"
 
     if len(text) > max_length:
         text = (
@@ -169,6 +171,7 @@ def print_row(row):
         f"Amount: {row['amount']}\n"
         f"Category: {row['category']}\n"
         f"Grantee: {row['grantee']}\n"
+        f"Twitter: {row['twitter']}\n"
         f"Link: {row['link']}\n"
         f"Why: {row['why']}\n"
         f"Tweet Status: {row['tweet_status']}\n"
@@ -190,6 +193,16 @@ def delete_donation(db, hash):
     ids = db.remove(donation_db.hash == hash)
     if ids:
         print(f"Donation {hash} deleted.")
+    else:
+        print(f"Donation {hash} not found.")
+
+
+def flag_donation(db, hash, platform, value):
+    donation_db = Query()
+    field = f"{platform}_status"
+    ids = db.update({field: value}, donation_db.hash == hash)
+    if ids:
+        print(f"Donation {hash} set to {field}: {value}.")
     else:
         print(f"Donation {hash} not found.")
 
