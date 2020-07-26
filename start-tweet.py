@@ -54,9 +54,7 @@ def download_donations(db, sheet_url):
         trimmed_donations = []
         for row in raw_donations:
             # Skip past initial rows
-            if row[0] == "Distributed:":
-                distributed_flag = True
-            elif (row[0] == "Date") and distributed_flag:
+            if (row[0] == "Date"):
                 date_flag = True
             elif date_flag:
 
