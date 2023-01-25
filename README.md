@@ -1,3 +1,7 @@
+# Status
+
+This project is inactive since I'm not running Twitter bots any more.
+
 # startsmall tracker
 
 This project is a Twitter bot that tracks Jack Dorsey's #startsmall 
